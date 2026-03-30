@@ -626,7 +626,10 @@ function updateProg(){
 async function addTask(){
   const inp=document.getElementById('new-task-inp');
   const txt=inp.value.trim();if(!txt)return;
-  const row=await dbInsert('daily_tasks',{date:today(),text:txt,completed:false});
+  const taskData={date:today(),text:txt,completed:false};
+  console.log('Сохраняем задачу:',taskData);
+  const row=await dbInsert('daily_tasks',taskData);
+  console.log('Ответ Supabase:',row,null);
   tasks.push(row);inp.value='';renderTasks();toast('Задача добавлена ✓');
 }
 document.getElementById('new-task-inp').addEventListener('keydown',e=>{if(e.key==='Enter')addTask()});
