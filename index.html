@@ -927,7 +927,7 @@ async function loadStats(){
   document.getElementById('stat-tasks').textContent=tValid.length?Math.round(tValid.reduce((a,b)=>a+b,0)/tValid.length)+'%':'—';
   mkChart('mood-chart','line',labels,moodVals,'Настроение','#D4A5A5',1,10,v=>({1:'😤',2:'😰',3:'😔',4:'😴',5:'—',6:'🤔',7:'😌',8:'😊',9:'🔥',10:'🔥'}[v]||''));
   mkChart('task-chart','bar',labels,taskPcts,'Выполнено %','#B5D4B5',0,100);
-  const wks=await dbGet('weekly_review',{});const wkLast=wks.slice(-7);
+  const wks=JSON.parse(localStorage.getItem('weekly_review')||'[]');const wkLast=wks.slice(-7);
   mkChart('happy-chart','line',wkLast.length?wkLast.map(w=>{const d=new Date(w.week_start+'T00:00:00');return`${d.getDate()}.${d.getMonth()+1}`}):[''],wkLast.length?wkLast.map(w=>w.happiness_score||null):[null],'Счастье','#E8D5A8',1,10);
 }
 
