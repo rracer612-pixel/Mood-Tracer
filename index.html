@@ -948,6 +948,7 @@ function init(){
 
     loadTasks();loadMorning();loadNotes();
 
+    console.log('hiding loader');
     loading.style.display='none';
     document.getElementById('app').style.display='block';
     renderTasks();renderMood();updateFab();
