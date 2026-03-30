@@ -902,7 +902,7 @@ async function openDayDetail(ds){
     <div class="dd-row"><span class="dd-icon">${em?em.emoji:'💭'}</span><div><div class="dd-label">Преобладающая эмоция</div><div class="dd-val">${em?em.label:'Нет записей'}</div></div></div>
     ${totalTasks>0?`<div class="dd-row"><span class="dd-icon">✅</span><div><div class="dd-label">Задачи</div><div class="dd-val">${doneTasks} из ${totalTasks} выполнено</div></div></div>`:''}
     ${firstGrat?`<div class="dd-row"><span class="dd-icon">🙏</span><div><div class="dd-label">Благодарность</div><div class="dd-val">${esc(firstGrat)}</div></div></div>`:''}
-    ${dd.evening?`<div class="dd-row"><span class="dd-icon">🌙</span><div><div class="dd-label">Вечерний ритуал</div><div class="dd-val">Выполнен</div></div></div>`:''}``;
+    ${dd.evening?`<div class="dd-row"><span class="dd-icon">🌙</span><div><div class="dd-label">Вечерний ритуал</div><div class="dd-val">Выполнен</div></div></div>`:''}`;
   openM('m-day');
 }
 
