@@ -433,7 +433,7 @@ let uid = 'demo';
 let tasks = [], morning = null, notes = [], evening = null;
 let ritualStep = 1, ritualData = {};
 let eveningStep = 1, eveningData = {};
-let monthlyScores = {}, selectedEmotion = null;
+let monthlyScores = {}, selectedEmotion = null, editingNoteId = null;
 let charts = {};
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
@@ -582,11 +582,11 @@ function renderTasks(){
   } else {
     list.innerHTML=tasks.map(t=>`
       <div class="task-card">
-        <div class="task-cb ${t.completed?'done':''}" onclick="toggleTask(${t.id})"></div>
-        <div class="task-txt ${t.completed?'done':''}" onclick="openEdit(${t.id})">${esc(t.text)}</div>
+        <div class="task-cb ${t.completed?'done':''}" onclick="toggleTask('${t.id}')"></div>
+        <div class="task-txt ${t.completed?'done':''}" onclick="openEdit('${t.id}')">${esc(t.text)}</div>
         <div class="task-acts">
-          <button class="task-act" onclick="openEdit(${t.id})">✏️</button>
-          <button class="task-act" onclick="delTask(${t.id})">🗑️</button>
+          <button class="task-act" onclick="openEdit('${t.id}')">✏️</button>
+          <button class="task-act" onclick="delTask('${t.id}')">🗑️</button>
         </div>
       </div>`).join('');
   }
@@ -696,7 +696,7 @@ function renderMood(){
     html+=notes.map(n=>{
       const em=EMOTIONS.find(e=>e.label===n.emotion);
       const c=em?em.color:'var(--s4)';
-      return `<div class="mood-note" style="box-shadow:inset 3px 0 0 ${c}"><div class="mood-note-top"><span style="font-size:26px">${em?em.emoji:'💭'}</span><span style="font-size:12px;color:var(--gray)">${n.time||''}</span></div><div class="mood-note-txt">${esc(n.text)}</div><div class="mood-note-em" style="color:${c}">${n.emotion||''}</div></div>`;
+      return `<div class="mood-note" style="box-shadow:inset 3px 0 0 ${c}"><div class="mood-note-top"><span style="font-size:26px">${em?em.emoji:'💭'}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--gray)">${n.time||''}</span><button onclick="openEditNote('${n.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;color:var(--gray)">✏️</button></div></div><div class="mood-note-txt">${esc(n.text)}</div><div class="mood-note-em" style="color:${c}">${n.emotion||''}</div></div>`;
     }).join('');
   }
 
@@ -712,10 +712,18 @@ function renderMood(){
 function toggleColl(bodyId,arrowId){document.getElementById(bodyId).classList.toggle('open');document.getElementById(arrowId).classList.toggle('open')}
 
 function openAddNote(){
-  selectedEmotion=null;
+  editingNoteId=null;selectedEmotion=null;
   document.getElementById('note-txt').value='';
   document.getElementById('note-time').textContent=nowTime();
   document.getElementById('em-picker').innerHTML=EMOTIONS.map(e=>`<div class="em-btn" onclick="selEm('${esc(e.label)}',this)" data-color="${e.color}"><span class="ee">${e.emoji}</span><span class="el">${e.label}</span></div>`).join('');
+  openM('m-note');
+}
+function openEditNote(id){
+  const n=notes.find(n=>n.id==id);if(!n)return;
+  editingNoteId=id;selectedEmotion=n.emotion||null;
+  document.getElementById('note-txt').value=n.text||'';
+  document.getElementById('note-time').textContent=n.time||'';
+  document.getElementById('em-picker').innerHTML=EMOTIONS.map(e=>`<div class="em-btn${e.label===n.emotion?' sel':''}" onclick="selEm('${esc(e.label)}',this)" data-color="${e.color}" style="${e.label===n.emotion?`border-color:${e.color};background:${e.color}28`:''}" ><span class="ee">${e.emoji}</span><span class="el">${e.label}</span></div>`).join('');
   openM('m-note');
 }
 
@@ -726,13 +734,18 @@ function selEm(label,el){
   if(c){el.style.borderColor=c;el.style.background=c+'28'}
 }
 
-async function saveNote(){
+function saveNote(){
   const txt=document.getElementById('note-txt').value.trim();
   if(!txt){toast('Напиши что-нибудь 💬');return}
-  const row=await dbInsert('mood_notes',{date:today(),time:nowTime(),text:txt,emotion:selectedEmotion||'Задумчивость'});
-  notes.push(row);closeM('m-note');
-  calCache={};
-  renderMood();toast('Заметка добавлена 💙');
+  if(editingNoteId){
+    const n=notes.find(n=>n.id==editingNoteId);if(!n)return;
+    n.text=txt;n.emotion=selectedEmotion||n.emotion;
+    dbUpdate('mood_notes',editingNoteId,{text:n.text,emotion:n.emotion});
+    editingNoteId=null;closeM('m-note');calCache={};renderMood();toast('Заметка обновлена ✏️');
+  } else {
+    const row=dbInsert('mood_notes',{date:today(),time:nowTime(),text:txt,emotion:selectedEmotion||'Задумчивость'});
+    notes.push(row);closeM('m-note');calCache={};renderMood();toast('Заметка добавлена 💙');
+  }
 }
 
 // ═══════════════════════════════════════
