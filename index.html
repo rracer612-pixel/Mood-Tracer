@@ -696,7 +696,7 @@ function renderMood(){
     html+=notes.map(n=>{
       const em=EMOTIONS.find(e=>e.label===n.emotion);
       const c=em?em.color:'var(--s4)';
-      return `<div class="mood-note" style="box-shadow:inset 3px 0 0 ${c}"><div class="mood-note-top"><span style="font-size:26px">${em?em.emoji:'💭'}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--gray)">${n.time||''}</span><button onclick="openEditNote('${n.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;color:var(--gray)">✏️</button></div></div><div class="mood-note-txt">${esc(n.text)}</div><div class="mood-note-em" style="color:${c}">${n.emotion||''}</div></div>`;
+      return `<div class="mood-note" style="box-shadow:inset 3px 0 0 ${c}"><div class="mood-note-top"><span style="font-size:26px">${em?em.emoji:'💭'}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--gray)">${n.time||''}</span><button onclick="openEditNote('${n.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;color:var(--gray)">✏️</button><button onclick="deleteNote('${n.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;color:var(--gray)">🗑️</button></div></div><div class="mood-note-txt">${esc(n.text)}</div><div class="mood-note-em" style="color:${c}">${n.emotion||''}</div></div>`;
     }).join('');
   }
 
@@ -734,6 +734,11 @@ function selEm(label,el){
   if(c){el.style.borderColor=c;el.style.background=c+'28'}
 }
 
+function deleteNote(id){
+  dbDelete('mood_notes',id);
+  notes=notes.filter(n=>n.id!=id);
+  calCache={};renderMood();toast('Заметка удалена');
+}
 function saveNote(){
   const txt=document.getElementById('note-txt').value.trim();
   if(!txt){toast('Напиши что-нибудь 💬');return}
