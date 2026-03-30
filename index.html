@@ -503,28 +503,28 @@ function tableKey(table,filters){
 }
 function tablePrefix(table){return TABLE_PREFIX[table]||table+'_'}
 
-async function dbGet(table,filters={}){
+function dbGet(table,filters={}){
   const k=tableKey(table,filters);
   if(k)return lsGet(k)||[];
   const prefix=tablePrefix(table),all=[];
   for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key.startsWith(prefix)){const rows=lsGet(key)||[];all.push(...(Array.isArray(rows)?rows:[rows]))}}
   return Object.keys(filters).length?all.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)):all;
 }
-async function dbInsert(table,row){
+function dbInsert(table,row){
   const full={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:new Date().toISOString()};
   const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
   const rows=lsGet(k)||[];rows.push(full);lsSet(k,rows);
   return full;
 }
-async function dbUpdate(table,id,patch){
+function dbUpdate(table,id,patch){
   const prefix=tablePrefix(table);
   for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const idx=rows.findIndex(r=>r.id==id);if(idx>=0){rows[idx]={...rows[idx],...patch};lsSet(k,rows);return}}}
 }
-async function dbDelete(table,id){
+function dbDelete(table,id){
   const prefix=tablePrefix(table);
   for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const f=rows.filter(r=>r.id!=id);if(f.length!==rows.length){lsSet(k,f);return}}}
 }
-async function dbUpsert(table,matchKeys,row){
+function dbUpsert(table,matchKeys,row){
   const full={...row,user_id:uid};
   const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
   const rows=lsGet(k)||[];
@@ -562,7 +562,7 @@ function updateFab(){
 // ═══════════════════════════════════════
 //  TASKS
 // ═══════════════════════════════════════
-async function loadTasks(){tasks=await dbGet('daily_tasks',{date:today()})}
+function loadTasks(){tasks=dbGet('daily_tasks',{date:today()})}
 
 function renderTasks(){
   document.getElementById('tasks-date').textContent=fmtDate(today());
@@ -632,7 +632,7 @@ function dynVals(listId){return Array.from(document.querySelectorAll(`#${listId}
 // ═══════════════════════════════════════
 //  MORNING RITUAL
 // ═══════════════════════════════════════
-async function loadMorning(){const rows=await dbGet('morning_ritual',{date:today()});morning=rows[0]||null}
+function loadMorning(){const rows=dbGet('morning_ritual',{date:today()});morning=rows[0]||null}
 
 function openRitual(){ritualStep=1;ritualData={};renderRitual();openM('m-ritual')}
 
@@ -675,9 +675,9 @@ async function ritualNext(){
 // ═══════════════════════════════════════
 //  MOOD NOTES
 // ═══════════════════════════════════════
-async function loadNotes(){
-  notes=await dbGet('mood_notes',{date:today()});
-  const ev=await dbGet('evening_ritual',{date:today()});
+function loadNotes(){
+  notes=dbGet('mood_notes',{date:today()});
+  const ev=dbGet('evening_ritual',{date:today()});
   evening=ev[0]||null;
 }
 
@@ -781,9 +781,9 @@ async function eveningNext(){
 // ═══════════════════════════════════════
 //  WEEKLY / MONTHLY REVIEWS
 // ═══════════════════════════════════════
-async function checkWeekly(){
+function checkWeekly(){
   if(!isSunday())return;const ws=weekStart();if(lsGet(`wr-shown:${ws}`))return;
-  const rows=await dbGet('weekly_review',{week_start:ws});if(rows.length)return;
+  const rows=dbGet('weekly_review',{week_start:ws});if(rows.length)return;
   lsSet(`wr-shown:${ws}`,1);setTimeout(()=>openM('m-weekly'),900);
 }
 async function saveWeekly(){
@@ -792,9 +792,9 @@ async function saveWeekly(){
   closeM('m-weekly');toast('Обзор недели сохранён 🌟');
 }
 
-async function checkMonthly(){
+function checkMonthly(){
   if(!isFirst())return;const ms=monthStr();if(lsGet(`mr-shown:${ms}`))return;
-  const rows=await dbGet('monthly_review',{month:ms});if(rows.length)return;
+  const rows=dbGet('monthly_review',{month:ms});if(rows.length)return;
   lsSet(`mr-shown:${ms}`,1);monthlyScores={};renderMonthlyList();setTimeout(()=>openM('m-monthly'),1200);
 }
 function renderMonthlyList(){document.getElementById('monthly-list').innerHTML=MONTH_ITEMS.map((name,i)=>`<div class="month-row" id="mr-${i}"><div class="month-row-head"><span class="month-row-name">${name}</span><span class="month-skip" onclick="skipMonth(${i})">Отмечу позже</span></div><div class="score-btns">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button class="sb${monthlyScores[i]===n?' sel':''}" onclick="setScore(${i},${n},this)">${n}</button>`).join('')}</div></div>`).join('')}
@@ -943,24 +943,21 @@ function mkChart(canvasId,type,labels,data,label,color,yMin,yMax,tickCb){
 // ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
-async function init(){
+function init(){
   const tg=window.Telegram?.WebApp;
   if(tg){tg.ready();tg.expand();uid=tg.initDataUnsafe?.user?.id?.toString()||'local'}
 
-  tasks=await dbGet('daily_tasks',{date:today()});
-  const mRows=await dbGet('morning_ritual',{date:today()});morning=mRows[0]||null;
-  notes=await dbGet('mood_notes',{date:today()});
-  const evRows=await dbGet('evening_ritual',{date:today()});evening=evRows[0]||null;
+  loadTasks();loadMorning();loadNotes();
 
   const loading=document.getElementById('loading');
-  loading.style.opacity='0';
-  setTimeout(()=>{loading.style.display='none';document.getElementById('app').style.display='block';},300);
+  loading.style.display='none';
+  document.getElementById('app').style.display='block';
   renderTasks();renderMood();updateFab();
 
   const shownToday=lsGet(`mt-shown:${today()}`);
   if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
-  await checkWeekly();
-  await checkMonthly();
+  checkWeekly();
+  checkMonthly();
 }
 
 init();
