@@ -600,25 +600,22 @@ function updateProg(){
   document.getElementById('prog-text').textContent=`${done} из ${total} задач выполнено`;
 }
 
-async function addTask(){
+function addTask(){
   const inp=document.getElementById('new-task-inp');
   const txt=inp.value.trim();if(!txt)return;
-  const taskData={date:today(),text:txt,completed:false};
-  console.log('Сохраняем задачу:',taskData);
-  const row=await dbInsert('daily_tasks',taskData);
-  console.log('Ответ Supabase:',row,null);
+  const row=dbInsert('daily_tasks',{date:today(),text:txt,completed:false});
   tasks.push(row);inp.value='';renderTasks();toast('Задача добавлена ✓');
 }
 document.getElementById('new-task-inp').addEventListener('keydown',e=>{if(e.key==='Enter')addTask()});
 
-async function toggleTask(id){const t=tasks.find(t=>t.id==id);if(!t)return;t.completed=!t.completed;await dbUpdate('daily_tasks',id,{completed:t.completed});renderTasks()}
-async function delTask(id){await dbDelete('daily_tasks',id);tasks=tasks.filter(t=>t.id!=id);renderTasks();toast('Задача удалена')}
+function toggleTask(id){const t=tasks.find(t=>t.id==id);if(!t)return;t.completed=!t.completed;dbUpdate('daily_tasks',id,{completed:t.completed});renderTasks()}
+function delTask(id){dbDelete('daily_tasks',id);tasks=tasks.filter(t=>t.id!=id);renderTasks();toast('Задача удалена')}
 function openEdit(id){const t=tasks.find(t=>t.id==id);if(!t)return;document.getElementById('edit-id').value=id;document.getElementById('edit-txt').value=t.text;openM('m-edit-task')}
-async function saveEdit(){const id=document.getElementById('edit-id').value;const txt=document.getElementById('edit-txt').value.trim();if(!txt)return;const t=tasks.find(t=>t.id==id);if(!t)return;t.text=txt;await dbUpdate('daily_tasks',id,{text:txt});renderTasks();closeM('m-edit-task');toast('Задача обновлена')}
+function saveEdit(){const id=document.getElementById('edit-id').value;const txt=document.getElementById('edit-txt').value.trim();if(!txt)return;const t=tasks.find(t=>t.id==id);if(!t)return;t.text=txt;dbUpdate('daily_tasks',id,{text:txt});renderTasks();closeM('m-edit-task');toast('Задача обновлена')}
 
-async function startDay(){
+function startDay(){
   const inputs=document.querySelectorAll('#mt-list input');
-  for(const inp of inputs){const txt=inp.value.trim();if(txt){const row=await dbInsert('daily_tasks',{date:today(),text:txt,completed:false});tasks.push(row)}}
+  for(const inp of inputs){const txt=inp.value.trim();if(txt){const row=dbInsert('daily_tasks',{date:today(),text:txt,completed:false});tasks.push(row)}}
   renderTasks();closeM('m-morning-tasks');toast('Удачного дня! 🌟');
 }
 
@@ -944,20 +941,26 @@ function mkChart(canvasId,type,labels,data,label,color,yMin,yMax,tickCb){
 //  INIT
 // ═══════════════════════════════════════
 function init(){
-  const tg=window.Telegram?.WebApp;
-  if(tg){tg.ready();tg.expand();uid=tg.initDataUnsafe?.user?.id?.toString()||'local'}
-
-  loadTasks();loadMorning();loadNotes();
-
   const loading=document.getElementById('loading');
-  loading.style.display='none';
-  document.getElementById('app').style.display='block';
-  renderTasks();renderMood();updateFab();
+  try{
+    const tg=window.Telegram?.WebApp;
+    if(tg){tg.ready();tg.expand();uid=tg.initDataUnsafe?.user?.id?.toString()||'local'}
 
-  const shownToday=lsGet(`mt-shown:${today()}`);
-  if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
-  checkWeekly();
-  checkMonthly();
+    loadTasks();loadMorning();loadNotes();
+
+    loading.style.display='none';
+    document.getElementById('app').style.display='block';
+    renderTasks();renderMood();updateFab();
+
+    const shownToday=lsGet(`mt-shown:${today()}`);
+    if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
+    checkWeekly();
+    checkMonthly();
+  }catch(e){
+    console.error('init error:',e);
+    loading.style.display='none';
+    document.getElementById('app').style.display='block';
+  }
 }
 
 init();
