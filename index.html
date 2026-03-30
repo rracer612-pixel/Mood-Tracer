@@ -6,7 +6,7 @@
 <title>MindFlow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
 :root{
@@ -352,6 +352,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
       <label class="inp-label">Эмоция</label>
       <div class="emotion-grid" id="em-picker"></div>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+      <button class="btn btn-dark" style="min-height:44px;padding:0 16px;font-size:20px" onclick="document.getElementById('note-photo-inp').click()">📷</button>
+      <div id="note-photo-preview" style="display:none;position:relative;width:80px;height:80px;flex-shrink:0">
+        <img id="note-photo-img" style="width:80px;height:80px;object-fit:cover;border-radius:12px">
+        <button onclick="clearNotePhoto()" style="position:absolute;top:-6px;right:-6px;background:var(--s4);border:none;border-radius:50%;width:22px;height:22px;color:var(--white);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">✕</button>
+      </div>
+    </div>
+    <input type="file" id="note-photo-inp" accept="image/*" style="display:none" onchange="onNotePhotoSelected(this)">
     <button class="btn btn-pink btn-full" onclick="saveNote()" style="margin-top:12px">Сохранить</button>
     <button class="btn btn-ghost btn-full" onclick="closeM('m-note')" style="margin-top:6px">Отмена</button>
   </div>
@@ -427,8 +435,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 // ═══════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_KEY = 'YOUR_SUPABASE_KEY';
+const SUPABASE_URL = 'https://qcktplxyybfwllzsipqs.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFja3RwbHh5eWJmd2xsenNpcHFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NzcwMzAsImV4cCI6MjA5MDQ1MzAzMH0.oI8Ska0clh4J2PuBMIpdftNwShf2jkyDfbOck0YPk_k';
 
 // ═══════════════════════════════════════
 //  STATE
@@ -437,7 +445,7 @@ let sb = null, uid = 'demo';
 let tasks = [], morning = null, notes = [], evening = null;
 let ritualStep = 1, ritualData = {};
 let eveningStep = 1, eveningData = {};
-let monthlyScores = {}, selectedEmotion = null;
+let monthlyScores = {}, selectedEmotion = null, notePhoto = null, notePhotoFile = null;
 let charts = {};
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
@@ -496,30 +504,57 @@ function getDayMood(dayNotes) {
 // ═══════════════════════════════════════
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch{return null}}
 function lsSet(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function lsCacheGet(table,filters={}){const rows=lsGet(`${table}:${uid}`)||[];return rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v))}
+function lsCacheSet(table,rows){lsSet(`${table}:${uid}`,rows)}
+function lsCacheMerge(table,incoming){
+  const all=lsGet(`${table}:${uid}`)||[];
+  const ids=new Set(incoming.map(r=>String(r.id)));
+  lsSet(`${table}:${uid}`,[...all.filter(r=>!ids.has(String(r.id))),...incoming]);
+}
+function lsCacheUpsert(table,full,matchFn){
+  const rows=lsGet(`${table}:${uid}`)||[];
+  const i=rows.findIndex(matchFn);
+  if(i>=0)rows[i]={...rows[i],...full};else rows.push(full);
+  lsSet(`${table}:${uid}`,rows);
+}
 
 async function dbGet(table,filters={}){
-  if(!sb){const rows=lsGet(`${table}:${uid}`)||[];return rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v))}
+  if(!sb){return lsCacheGet(table,filters)}
   let q=sb.from(table).select('*').eq('user_id',uid);
   Object.entries(filters).forEach(([k,v])=>{q=q.eq(k,v)});
-  const{data}=await q;return data||[];
+  const{data,error}=await q;
+  if(error||!data){return lsCacheGet(table,filters)}
+  lsCacheMerge(table,data);
+  return data;
 }
 async function dbInsert(table,row){
-  const full={...row,user_id:uid,id:Date.now(),created_at:new Date().toISOString()};
-  if(!sb){const rows=lsGet(`${table}:${uid}`)||[];rows.push(full);lsSet(`${table}:${uid}`,rows);return full}
-  const{data}=await sb.from(table).insert({...row,user_id:uid}).select().single();return data;
+  const localRow={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:new Date().toISOString()};
+  const rows=lsGet(`${table}:${uid}`)||[];rows.push(localRow);lsSet(`${table}:${uid}`,rows);
+  if(!sb)return localRow;
+  const{data,error}=await sb.from(table).insert({...row,user_id:uid}).select().single();
+  if(error||!data){toast('Не удалось сохранить, попробуй ещё раз');return localRow}
+  lsSet(`${table}:${uid}`,[...(lsGet(`${table}:${uid}`)||[]).filter(r=>r.id!==localRow.id),data]);
+  return data;
 }
 async function dbUpdate(table,id,patch){
-  if(!sb){const rows=lsGet(`${table}:${uid}`)||[];const i=rows.findIndex(r=>r.id==id);if(i>=0){rows[i]={...rows[i],...patch};lsSet(`${table}:${uid}`,rows)}return}
-  await sb.from(table).update(patch).eq('id',id).eq('user_id',uid);
+  const rows=lsGet(`${table}:${uid}`)||[];const i=rows.findIndex(r=>r.id==id);
+  if(i>=0){rows[i]={...rows[i],...patch};lsSet(`${table}:${uid}`,rows)}
+  if(!sb)return;
+  const{error}=await sb.from(table).update(patch).eq('id',id).eq('user_id',uid);
+  if(error)toast('Не удалось сохранить, попробуй ещё раз');
 }
 async function dbDelete(table,id){
-  if(!sb){lsSet(`${table}:${uid}`,(lsGet(`${table}:${uid}`)||[]).filter(r=>r.id!=id));return}
-  await sb.from(table).delete().eq('id',id).eq('user_id',uid);
+  lsSet(`${table}:${uid}`,(lsGet(`${table}:${uid}`)||[]).filter(r=>r.id!=id));
+  if(!sb)return;
+  const{error}=await sb.from(table).delete().eq('id',id).eq('user_id',uid);
+  if(error)toast('Не удалось сохранить, попробуй ещё раз');
 }
 async function dbUpsert(table,matchKeys,row){
   const full={...row,user_id:uid};
-  if(!sb){const rows=lsGet(`${table}:${uid}`)||[];const i=rows.findIndex(r=>matchKeys.every(k=>r[k]===full[k]));if(i>=0)rows[i]={...rows[i],...full};else rows.push({...full,id:Date.now(),created_at:new Date().toISOString()});lsSet(`${table}:${uid}`,rows);return}
-  await sb.from(table).upsert(full,{onConflict:matchKeys.join(',')});
+  lsCacheUpsert(table,{...full,id:full.id||Date.now(),created_at:full.created_at||new Date().toISOString()},r=>matchKeys.every(k=>r[k]===full[k]));
+  if(!sb)return;
+  const{error}=await sb.from(table).upsert(full,{onConflict:matchKeys.join(',')});
+  if(error)toast('Не удалось сохранить, попробуй ещё раз');
 }
 
 // ═══════════════════════════════════════
@@ -684,7 +719,7 @@ function renderMood(){
     html+=notes.map(n=>{
       const em=EMOTIONS.find(e=>e.label===n.emotion);
       const c=em?em.color:'var(--s4)';
-      return `<div class="mood-note" style="box-shadow:inset 3px 0 0 ${c}"><div class="mood-note-top"><span style="font-size:26px">${em?em.emoji:'💭'}</span><span style="font-size:12px;color:var(--gray)">${n.time||''}</span></div><div class="mood-note-txt">${esc(n.text)}</div><div class="mood-note-em" style="color:${c}">${n.emotion||''}</div></div>`;
+      return `<div class="mood-note" style="box-shadow:inset 3px 0 0 ${c}"><div class="mood-note-top"><span style="font-size:26px">${em?em.emoji:'💭'}</span><span style="font-size:12px;color:var(--gray)">${n.time||''}</span></div><div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div class="mood-note-txt">${esc(n.text)}</div><div class="mood-note-em" style="color:${c}">${n.emotion||''}</div></div>${n.photo_url?`<img src="${n.photo_url}" onclick="openFullPhoto('${n.photo_url}')" style="width:48px;height:48px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer">`:''}</div></div>`;
     }).join('');
   }
 
@@ -700,11 +735,25 @@ function renderMood(){
 function toggleColl(bodyId,arrowId){document.getElementById(bodyId).classList.toggle('open');document.getElementById(arrowId).classList.toggle('open')}
 
 function openAddNote(){
-  selectedEmotion=null;
+  selectedEmotion=null;notePhoto=null;notePhotoFile=null;
   document.getElementById('note-txt').value='';
   document.getElementById('note-time').textContent=nowTime();
   document.getElementById('em-picker').innerHTML=EMOTIONS.map(e=>`<div class="em-btn" onclick="selEm('${esc(e.label)}',this)" data-color="${e.color}"><span class="ee">${e.emoji}</span><span class="el">${e.label}</span></div>`).join('');
+  document.getElementById('note-photo-preview').style.display='none';
+  document.getElementById('note-photo-inp').value='';
   openM('m-note');
+}
+function onNotePhotoSelected(inp){
+  const file=inp.files[0];if(!file)return;
+  notePhotoFile=file;
+  const url=URL.createObjectURL(file);
+  document.getElementById('note-photo-img').src=url;
+  document.getElementById('note-photo-preview').style.display='flex';
+}
+function clearNotePhoto(){
+  notePhoto=null;notePhotoFile=null;
+  document.getElementById('note-photo-preview').style.display='none';
+  document.getElementById('note-photo-inp').value='';
 }
 
 function selEm(label,el){
@@ -717,9 +766,11 @@ function selEm(label,el){
 async function saveNote(){
   const txt=document.getElementById('note-txt').value.trim();
   if(!txt){toast('Напиши что-нибудь 💬');return}
-  const row=await dbInsert('mood_notes',{date:today(),time:nowTime(),text:txt,emotion:selectedEmotion||'Задумчивость'});
+  let photo_url=null;
+  if(notePhotoFile&&sb){try{photo_url=await uploadPhoto(notePhotoFile,uid,'note')}catch(e){console.warn('Photo upload failed',e)}}
+  const row=await dbInsert('mood_notes',{date:today(),time:nowTime(),text:txt,emotion:selectedEmotion||'Задумчивость',...(photo_url?{photo_url}:{})});
   notes.push(row);closeM('m-note');
-  calCache={};// invalidate calendar cache
+  calCache={};
   renderMood();toast('Заметка добавлена 💙');
 }
 
@@ -739,11 +790,18 @@ function renderEvening(){
   } else if(eveningStep===2){
     body.innerHTML=`<div class="sheet-title">Улучшения 🔄</div><div class="sheet-sub">Что смогу сделать завтра лучше?</div><textarea class="inp" id="ev-improve" placeholder="Завтра я постараюсь…" style="min-height:120px">${esc(eveningData.improve_tomorrow||'')}</textarea>`;
   } else {
-    body.innerHTML=`<div class="sheet-title">Прекрасное 🌟</div><div class="sheet-sub">Прекрасные события сегодняшнего дня</div><div class="dyn-list" id="ev-events"><div class="dyn-item"><input class="inp" type="text" placeholder="Сегодня произошло…"/></div><div class="dyn-item"><input class="inp" type="text" placeholder="Сегодня произошло…"/></div><div class="dyn-item"><input class="inp" type="text" placeholder="Сегодня произошло…"/></div></div><button class="btn btn-ghost" onclick="addDyn('ev-events','Сегодня произошло…',3)">+ Добавить ещё</button>`;
+    body.innerHTML=`<div class="sheet-title">Прекрасное 🌟</div><div class="sheet-sub">Прекрасные события сегодняшнего дня</div><div class="dyn-list" id="ev-events"><div class="dyn-item"><input class="inp" type="text" placeholder="Сегодня произошло…"/></div><div class="dyn-item"><input class="inp" type="text" placeholder="Сегодня произошло…"/></div><div class="dyn-item"><input class="inp" type="text" placeholder="Сегодня произошло…"/></div></div><button class="btn btn-ghost" onclick="addDyn('ev-events','Сегодня произошло…',3)">+ Добавить ещё</button><div style="margin-top:16px"><input type="file" id="ev-photo-inp" accept="image/*" style="display:none" onchange="onEvPhotoSelected(this)"><div id="ev-photo-zone" onclick="document.getElementById('ev-photo-inp').click()" style="height:160px;border-radius:16px;border:2px dashed var(--s4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;overflow:hidden;background:var(--s2)">${eveningData.ev_photo_preview?`<img src="${eveningData.ev_photo_preview}" style="width:100%;height:100%;object-fit:cover">`: `<span style="font-size:36px">📷</span><span style="font-size:13px;color:var(--gray)">Фото дня (необязательно)</span>`}</div></div>`;
     if(eveningData.beautiful_events){const inps=document.querySelectorAll('#ev-events input');eveningData.beautiful_events.slice(0,3).forEach((v,i)=>{if(inps[i])inps[i].value=v})}
   }
 }
 
+function onEvPhotoSelected(inp){
+  const file=inp.files[0];if(!file)return;
+  eveningData.ev_photo_file=file;
+  eveningData.ev_photo_preview=URL.createObjectURL(file);
+  const zone=document.getElementById('ev-photo-zone');
+  if(zone)zone.innerHTML=`<img src="${eveningData.ev_photo_preview}" style="width:100%;height:100%;object-fit:cover">`;
+}
 function eveningBack(){
   if(eveningStep===2)eveningData.good_for_others=document.getElementById('ev-others')?.value||'';
   if(eveningStep===3)eveningData.beautiful_events=dynVals('ev-events');
@@ -756,8 +814,10 @@ async function eveningNext(){
   else {
     const evs=dynVals('ev-events');if(evs.length<3){toast('Запиши минимум 3 события');return}
     eveningData.beautiful_events=evs;
-    await dbUpsert('evening_ritual',['user_id','date'],{date:today(),good_for_others:eveningData.good_for_others,improve_tomorrow:eveningData.improve_tomorrow,beautiful_events:eveningData.beautiful_events});
-    evening={...eveningData,date:today()};
+    let ev_photo_url=null;
+    if(eveningData.ev_photo_file&&sb){try{ev_photo_url=await uploadPhoto(eveningData.ev_photo_file,uid,'evening')}catch(e){console.warn('Evening photo upload failed',e)}}
+    await dbUpsert('evening_ritual',['user_id','date'],{date:today(),good_for_others:eveningData.good_for_others,improve_tomorrow:eveningData.improve_tomorrow,beautiful_events:eveningData.beautiful_events,...(ev_photo_url?{photo_url:ev_photo_url}:{})});
+    evening={...eveningData,date:today(),...(ev_photo_url?{photo_url:ev_photo_url}:{})};
     calCache={};
     closeM('m-evening');toast('Хорошего вечера! 🌙');renderMood();
   }
@@ -885,12 +945,15 @@ async function openDayDetail(ds){
   const d=new Date(ds+'T00:00:00');
   const DN=['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
   const MN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const notePhotos=dd.notes.filter(n=>n.photo_url);
   document.getElementById('day-detail').innerHTML=`
+    ${dd.evening?.photo_url?`<img src="${dd.evening.photo_url}" onclick="openFullPhoto('${dd.evening.photo_url}')" style="width:100%;height:140px;object-fit:cover;border-radius:16px;margin-bottom:16px;cursor:pointer">`: ''}
     <div class="dd-date">${DN[d.getDay()]}, ${d.getDate()} ${MN[d.getMonth()]}</div>
     <div class="dd-row"><span class="dd-icon">${em?em.emoji:'💭'}</span><div><div class="dd-label">Преобладающая эмоция</div><div class="dd-val">${em?em.label:'Нет записей'}</div></div></div>
     ${totalTasks>0?`<div class="dd-row"><span class="dd-icon">✅</span><div><div class="dd-label">Задачи</div><div class="dd-val">${doneTasks} из ${totalTasks} выполнено</div></div></div>`:''}
     ${firstGrat?`<div class="dd-row"><span class="dd-icon">🙏</span><div><div class="dd-label">Благодарность</div><div class="dd-val">${esc(firstGrat)}</div></div></div>`:''}
-    ${dd.evening?`<div class="dd-row"><span class="dd-icon">🌙</span><div><div class="dd-label">Вечерний ритуал</div><div class="dd-val">Выполнен</div></div></div>`:''}`;
+    ${dd.evening?`<div class="dd-row"><span class="dd-icon">🌙</span><div><div class="dd-label">Вечерний ритуал</div><div class="dd-val">Выполнен</div></div></div>`:''}
+    ${notePhotos.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${notePhotos.map(n=>`<img src="${n.photo_url}" onclick="openFullPhoto('${n.photo_url}')" style="width:44px;height:44px;object-fit:cover;border-radius:10px;cursor:pointer">`).join('')}</div>`:''}`;
   openM('m-day');
 }
 
@@ -928,27 +991,91 @@ function mkChart(canvasId,type,labels,data,label,color,yMin,yMax,tickCb){
 // ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
+function showOfflineBanner(){
+  if(document.getElementById('offline-banner'))return;
+  const b=document.createElement('div');
+  b.id='offline-banner';
+  b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9000;background:#5A2A2A;color:#F5F5F5;font-size:13px;text-align:center;padding:8px 16px;display:flex;align-items:center;justify-content:center;gap:8px';
+  b.innerHTML='⚠️ Нет соединения — данные из кэша <button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:16px;cursor:pointer;margin-left:4px">✕</button>';
+  document.body.prepend(b);
+}
+
 async function init(){
   const tg=window.Telegram?.WebApp;
   if(tg){tg.ready();tg.expand();uid=tg.initDataUnsafe?.user?.id?.toString()||'demo'}
-  try{if(SUPABASE_URL!=='YOUR_SUPABASE_URL')sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)}catch(e){console.warn('Supabase offline, using localStorage')}
 
-  await Promise.all([loadTasks(),loadMorning(),loadNotes()]);
-
-  // Check morning tasks modal
-  const shownToday=lsGet(`mt-shown:${today()}`);
-  if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
-
-  await checkWeekly();
-  await checkMonthly();
+  // 1. Show cached data immediately
+  tasks=lsCacheGet('daily_tasks',{date:today()});
+  const mRows=lsCacheGet('morning_ritual',{date:today()});morning=mRows[0]||null;
+  notes=lsCacheGet('mood_notes',{date:today()});
+  const evRows=lsCacheGet('evening_ritual',{date:today()});evening=evRows[0]||null;
 
   const loading=document.getElementById('loading');
   loading.style.opacity='0';
-  setTimeout(()=>{
-    loading.style.display='none';
-    document.getElementById('app').style.display='block';
+  setTimeout(()=>{loading.style.display='none';document.getElementById('app').style.display='block';},300);
+  renderTasks();renderMood();updateFab();
+
+  // 2. Try Supabase
+  let sbOk=false;
+  try{
+    if(SUPABASE_URL!=='YOUR_SUPABASE_URL'){
+      sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+      const{data,error}=await sb.from('daily_tasks').select('id').limit(1);
+      if(error){console.error('Supabase error:',error);alert('Supabase error: '+JSON.stringify(error))}
+      sbOk=!error;
+    }
+  }catch(e){console.error('Supabase exception:',e);alert('Supabase exception: '+e?.message)}
+
+  if(!sbOk&&SUPABASE_URL!=='YOUR_SUPABASE_URL')showOfflineBanner();
+
+  // 3. Load fresh data from Supabase and re-render
+  if(sbOk){
+    await Promise.all([loadTasks(),loadMorning(),loadNotes()]);
     renderTasks();renderMood();updateFab();
-  },500);
+  }
+
+  // 4. Check modals
+  const shownToday=lsGet(`mt-shown:${today()}`);
+  if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
+  await checkWeekly();
+  await checkMonthly();
+}
+
+function openFullPhoto(url){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center';
+  ov.onclick=()=>document.body.removeChild(ov);
+  ov.innerHTML=`<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px">`;
+  document.body.appendChild(ov);
+}
+
+async function compressImage(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const max = 800;
+        if (w > h && w > max) { h = h*max/w; w = max; }
+        else if (h > max) { w = w*max/h; h = max; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(resolve, 'image/jpeg', 0.8);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadPhoto(file, userId, context) {
+  const blob = await compressImage(file);
+  const path = `${userId}/${today()}/${context}_${Date.now()}.jpg`;
+  const { error } = await sb.storage.from('mood-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+  if (error) throw error;
+  return sb.storage.from('mood-photos').getPublicUrl(path).data.publicUrl;
 }
 
 init();
