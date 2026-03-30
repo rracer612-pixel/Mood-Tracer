@@ -632,6 +632,7 @@ function dynVals(listId){return Array.from(document.querySelectorAll(`#${listId}
 function loadMorning(){const rows=dbGet('morning_ritual',{date:today()});morning=rows[0]||null}
 
 function openRitual(){ritualStep=1;ritualData={};renderRitual();openM('m-ritual')}
+function openEditRitual(){ritualStep=1;ritualData={gratitude:morning.gratitude||[],good_day:morning.good_day||'',affirmation:morning.affirmation||''};renderRitual();openM('m-ritual')}
 
 function renderRitual(){
   const fill=document.getElementById('ritual-topbar-fill');
@@ -654,19 +655,21 @@ function ritualBack(){
   ritualStep--;renderRitual();
 }
 
-async function ritualNext(){
-  if(ritualStep===1){
-    const grats=dynVals('grat-list');if(grats.length<3){toast('Заполни минимум 3 пункта');return}
-    ritualData.gratitude=grats;ritualStep++;renderRitual();
-  } else if(ritualStep===2){
-    ritualData.good_day=document.getElementById('r-good').value.trim();ritualStep++;renderRitual();
-  } else {
-    ritualData.affirmation=document.getElementById('r-aff').value.trim();
-    await dbUpsert('morning_ritual',['user_id','date'],{date:today(),gratitude:ritualData.gratitude,good_day:ritualData.good_day,affirmation:ritualData.affirmation});
-    morning={...ritualData,date:today()};
-    closeM('m-ritual');toast('Утренний ритуал завершён ✨');
-    renderMood();renderTasks();updateFab();
-  }
+function ritualNext(){
+  try{
+    if(ritualStep===1){
+      const grats=dynVals('grat-list');if(grats.length<3){toast('Заполни минимум 3 пункта');return}
+      ritualData.gratitude=grats;ritualStep++;renderRitual();
+    } else if(ritualStep===2){
+      ritualData.good_day=document.getElementById('r-good').value.trim();ritualStep++;renderRitual();
+    } else {
+      ritualData.affirmation=document.getElementById('r-aff').value.trim();
+      dbUpsert('morning_ritual',['user_id','date'],{date:today(),gratitude:ritualData.gratitude,good_day:ritualData.good_day,affirmation:ritualData.affirmation});
+      morning={...ritualData,date:today()};
+      closeM('m-ritual');toast('Утренний ритуал завершён ✨');
+      renderMood();renderTasks();updateFab();
+    }
+  }catch(e){console.error('ritualNext error:',e);alert('Ошибка: '+e.message)}
 }
 
 // ═══════════════════════════════════════
@@ -686,7 +689,7 @@ function renderMood(){
   if(!morning){
     html+=`<div class="ritual-banner" style="margin-bottom:16px"><span class="rb-icon">🌅</span><div class="rb-info"><div class="rb-title">Утренний ритуал</div><div class="rb-sub">Ещё не пройден сегодня</div></div><button class="btn btn-pink btn-sm" onclick="openRitual()" style="flex-shrink:0;margin-left:8px">Начать ✨</button></div>`;
   } else {
-    html+=`<div class="card"><div class="coll-head" onclick="toggleColl('rc','ra')"><span class="ritual-badge">✓ Утренний ритуал</span><span class="coll-arrow" id="ra">▼</span></div><div class="coll-body" id="rc"><div class="rec-block"><div class="rec-label">Благодарность</div><ul class="rec-list">${(morning.gratitude||[]).map(g=>`<li>${esc(g)}</li>`).join('')}</ul></div>${morning.good_day?`<div class="rec-block"><div class="rec-label">Что сделает день хорошим</div><div class="rec-text">${esc(morning.good_day)}</div></div>`:''} ${morning.affirmation?`<div class="rec-block"><div class="rec-label">Установка дня</div><div class="rec-text">${esc(morning.affirmation)}</div></div>`:''}</div></div>`;
+    html+=`<div class="card"><div class="coll-head" onclick="toggleColl('rc','ra')"><span class="ritual-badge">✓ Утренний ритуал</span><div style="display:flex;align-items:center;gap:8px"><button onclick="event.stopPropagation();openEditRitual()" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;color:var(--gray)">✏️</button><span class="coll-arrow" id="ra">▼</span></div></div><div class="coll-body" id="rc"><div class="rec-block"><div class="rec-label">Благодарность</div><ul class="rec-list">${(morning.gratitude||[]).map(g=>`<li>${esc(g)}</li>`).join('')}</ul></div>${morning.good_day?`<div class="rec-block"><div class="rec-label">Что сделает день хорошим</div><div class="rec-text">${esc(morning.good_day)}</div></div>`:''} ${morning.affirmation?`<div class="rec-block"><div class="rec-label">Установка дня</div><div class="rec-text">${esc(morning.affirmation)}</div></div>`:''}</div></div>`;
   }
 
   html+=`<span class="section-label" style="margin-top:8px;display:block">Заметки дня</span>`;
@@ -701,7 +704,7 @@ function renderMood(){
   }
 
   if(evening){
-    html+=`<div class="card" style="margin-top:8px"><div class="coll-head" onclick="toggleColl('ec','ea')"><span class="ritual-badge ev">🌙 Вечерний ритуал</span><span class="coll-arrow" id="ea">▼</span></div><div class="coll-body" id="ec">${evening.good_for_others?`<div class="rec-block"><div class="rec-label">Сделал для других</div><div class="rec-text">${esc(evening.good_for_others)}</div></div>`:''} ${evening.improve_tomorrow?`<div class="rec-block"><div class="rec-label">Улучшу завтра</div><div class="rec-text">${esc(evening.improve_tomorrow)}</div></div>`:''} ${evening.beautiful_events?`<div class="rec-block"><div class="rec-label">Прекрасные события</div><ul class="rec-list">${(evening.beautiful_events||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}</div></div>`;
+    html+=`<div class="card" style="margin-top:8px"><div class="coll-head" onclick="toggleColl('ec','ea')"><span class="ritual-badge ev">🌙 Вечерний ритуал</span><div style="display:flex;align-items:center;gap:8px"><button onclick="event.stopPropagation();openEditEvening()" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;color:var(--gray)">✏️</button><span class="coll-arrow" id="ea">▼</span></div></div><div class="coll-body" id="ec">${evening.good_for_others?`<div class="rec-block"><div class="rec-label">Сделал для других</div><div class="rec-text">${esc(evening.good_for_others)}</div></div>`:''} ${evening.improve_tomorrow?`<div class="rec-block"><div class="rec-label">Улучшу завтра</div><div class="rec-text">${esc(evening.improve_tomorrow)}</div></div>`:''} ${evening.beautiful_events?`<div class="rec-block"><div class="rec-label">Прекрасные события</div><ul class="rec-list">${(evening.beautiful_events||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}</div></div>`;
   } else {
     html+=`<button class="btn btn-purple btn-full" onclick="openEvening()" style="margin-top:12px">🌙 Завершить день</button>`;
   }
@@ -757,6 +760,7 @@ function saveNote(){
 //  EVENING RITUAL
 // ═══════════════════════════════════════
 function openEvening(){eveningStep=1;eveningData={};renderEvening();openM('m-evening')}
+function openEditEvening(){eveningStep=1;eveningData={good_for_others:evening.good_for_others||'',improve_tomorrow:evening.improve_tomorrow||'',beautiful_events:evening.beautiful_events||[]};renderEvening();openM('m-evening')}
 
 function renderEvening(){
   const fill=document.getElementById('evening-topbar-fill');
@@ -780,17 +784,19 @@ function eveningBack(){
   eveningStep--;renderEvening();
 }
 
-async function eveningNext(){
-  if(eveningStep===1){eveningData.good_for_others=document.getElementById('ev-others').value.trim();eveningStep++;renderEvening()}
-  else if(eveningStep===2){eveningData.improve_tomorrow=document.getElementById('ev-improve').value.trim();eveningStep++;renderEvening()}
-  else {
-    const evs=dynVals('ev-events');if(evs.length<3){toast('Запиши минимум 3 события');return}
-    eveningData.beautiful_events=evs;
-    await dbUpsert('evening_ritual',['user_id','date'],{date:today(),good_for_others:eveningData.good_for_others,improve_tomorrow:eveningData.improve_tomorrow,beautiful_events:eveningData.beautiful_events});
-    evening={...eveningData,date:today()};
-    calCache={};
-    closeM('m-evening');toast('Хорошего вечера! 🌙');renderMood();
-  }
+function eveningNext(){
+  try{
+    if(eveningStep===1){eveningData.good_for_others=document.getElementById('ev-others').value.trim();eveningStep++;renderEvening()}
+    else if(eveningStep===2){eveningData.improve_tomorrow=document.getElementById('ev-improve').value.trim();eveningStep++;renderEvening()}
+    else {
+      const evs=dynVals('ev-events');if(evs.length<3){toast('Запиши минимум 3 события');return}
+      eveningData.beautiful_events=evs;
+      dbUpsert('evening_ritual',['user_id','date'],{date:today(),good_for_others:eveningData.good_for_others,improve_tomorrow:eveningData.improve_tomorrow,beautiful_events:eveningData.beautiful_events});
+      evening={...eveningData,date:today()};
+      calCache={};
+      closeM('m-evening');toast('Хорошего вечера! 🌙');renderMood();
+    }
+  }catch(e){console.error('eveningNext error:',e);alert('Ошибка: '+e.message)}
 }
 
 // ═══════════════════════════════════════
