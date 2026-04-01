@@ -446,7 +446,7 @@ function checkWeekly(){
 }
 async function saveWeekly(){
   const ach=dynVals('w-ach-list');if(ach.length<3){toast('Запиши минимум 3 успеха');return}
-  await dbUpsert('weekly_review',['user_id','week_start'],{week_start:weekStart(),achievements:ach,happiness_score:parseInt(document.getElementById('w-happy-sl').value),happiness_reason:document.getElementById('w-reason').value.trim(),learned:document.getElementById('w-learned').value.trim(),next_week:document.getElementById('w-next').value.trim()});
+  await dbUpsert('weekly_review',['user_id','week_start'],{id:uid+'_'+weekStart(),week_start:weekStart(),achievements:ach,happiness_score:parseInt(document.getElementById('w-happy-sl').value),happiness_reason:document.getElementById('w-reason').value.trim(),learned:document.getElementById('w-learned').value.trim(),next_week:document.getElementById('w-next').value.trim()});
   closeM('m-weekly');toast('Обзор недели сохранён 🌟');
 }
 
@@ -458,7 +458,7 @@ function checkMonthly(){
 function renderMonthlyList(){document.getElementById('monthly-list').innerHTML=MONTH_ITEMS.map((name,i)=>`<div class="month-row" id="mr-${i}"><div class="month-row-head"><span class="month-row-name">${name}</span><span class="month-skip" onclick="skipMonth(${i})">Отмечу позже</span></div><div class="score-btns">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button class="sb${monthlyScores[i]===n?' sel':''}" onclick="setScore(${i},${n},this)">${n}</button>`).join('')}</div></div>`).join('')}
 function setScore(idx,val,el){monthlyScores[idx]=val;el.closest('.score-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('sel'));el.classList.add('sel')}
 function skipMonth(idx){const r=document.getElementById(`mr-${idx}`);if(r)r.style.opacity='.35'}
-async function saveMonthly(){await dbUpsert('monthly_review',['user_id','month'],{month:monthStr(),scores:monthlyScores,notes:document.getElementById('m-notes').value.trim()});closeM('m-monthly');toast('Обзор месяца сохранён 📅')}
+async function saveMonthly(){await dbUpsert('monthly_review',['user_id','month'],{id:uid+'_'+monthStr(),month:monthStr(),scores:monthlyScores,notes:document.getElementById('m-notes').value.trim()});closeM('m-monthly');toast('Обзор месяца сохранён 📅')}
 
 // ═══════════════════════════════════════
 //  CALENDAR
