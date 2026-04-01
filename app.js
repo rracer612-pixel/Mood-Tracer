@@ -137,33 +137,21 @@ async function dbFetch(table,filters={}){
 
 function dbInsert(table,row){
   const full={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:Date.now()};
-  const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
-  const rows=lsGet(k)||[];rows.push(full);lsSet(k,rows);
   sb.from(table).insert(full).then(({error})=>{if(error)console.warn('dbInsert error:',error)});
   return full;
 }
 
 function dbUpdate(table,id,patch){
-  const prefix=tablePrefix(table);
-  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const idx=rows.findIndex(r=>r.id==id);if(idx>=0){rows[idx]={...rows[idx],...patch};lsSet(k,rows);break}}}
   sb.from(table).update(patch).eq('id',id).then(({error})=>{if(error)console.warn('dbUpdate error:',error)});
 }
 
 function dbDelete(table,id){
-  const prefix=tablePrefix(table);
-  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const f=rows.filter(r=>r.id!=id);if(f.length!==rows.length){lsSet(k,f);break}}}
   sb.from(table).delete().eq('id',id).then(({error})=>{if(error)console.warn('dbDelete error:',error)});
 }
 
 function dbUpsert(table,matchKeys,row){
-  const full={...row,user_id:uid};
-  const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
-  const rows=lsGet(k)||[];
-  const i=rows.findIndex(r=>matchKeys.every(mk=>r[mk]===full[mk]));
-  const entry={...(i>=0?rows[i]:{}), ...full, id:i>=0?rows[i].id:Date.now(), created_at:i>=0?rows[i].created_at:Date.now()};
-  if(i>=0)rows[i]=entry;else rows.push(entry);
-  lsSet(k,rows);
-  sb.from(table).upsert(entry,{onConflict:matchKeys.join(',')}).then(({error})=>{if(error)console.warn('dbUpsert error:',error)});
+  const full={...row,user_id:uid,created_at:Date.now()};
+  sb.from(table).upsert(full,{onConflict:matchKeys.join(',')}).then(({error})=>{if(error)console.warn('dbUpsert error:',error)});
 }
 
 // ═══════════════════════════════════════
@@ -679,7 +667,15 @@ function init(){
     console.log('initDataUnsafe:', window.Telegram?.WebApp?.initDataUnsafe)
     console.log('user:', window.Telegram?.WebApp?.initDataUnsafe?.user)
     const tg=window.Telegram?.WebApp;
-    if(tg){tg.ready();tg.expand();uid=tg.initDataUnsafe?.user?.id?.toString()||'local'}
+    if(tg){tg.ready();tg.expand();}
+    const tgUser=window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if(tgUser?.id){
+      uid=tgUser.id.toString();
+    } else {
+      uid=lsGet('demo_uid');
+      if(!uid){uid='demo_'+Math.random().toString(36).slice(2,8);lsSet('demo_uid',uid)}
+    }
+    console.log('uid:',uid)
 
     loadTasks();loadMorning();loadNotes();
 
