@@ -137,12 +137,18 @@ async function dbFetch(table,filters={}){
 
 function dbInsert(table,row){
   const full={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:Date.now()};
-  sb.from(table).insert(full).then(({error})=>{if(error)console.warn('dbInsert error:',error)});
+  sb.from(table).insert(full).then(({error})=>{
+    if(error)console.warn('dbInsert error:',error);
+    else console.log('saved to:',table,full);
+  });
   return full;
 }
 
 function dbUpdate(table,id,patch){
-  sb.from(table).update(patch).eq('id',id).then(({error})=>{if(error)console.warn('dbUpdate error:',error)});
+  sb.from(table).update(patch).eq('id',id).then(({error})=>{
+    if(error)console.warn('dbUpdate error:',error);
+    else console.log('saved to:',table,{id,patch});
+  });
 }
 
 function dbDelete(table,id){
@@ -151,7 +157,10 @@ function dbDelete(table,id){
 
 function dbUpsert(table,matchKeys,row){
   const full={...row,user_id:uid,created_at:Date.now()};
-  sb.from(table).upsert(full,{onConflict:matchKeys.join(',')}).then(({error})=>{if(error)console.warn('dbUpsert error:',error)});
+  sb.from(table).upsert(full,{onConflict:matchKeys.join(',')}).then(({error})=>{
+    if(error)console.warn('dbUpsert error:',error);
+    else console.log('saved to:',table,full);
+  });
 }
 
 // ═══════════════════════════════════════
@@ -284,8 +293,12 @@ function ritualNext(){
       ritualData.good_day=document.getElementById('r-good').value.trim();ritualStep++;renderRitual();
     } else {
       ritualData.affirmation=document.getElementById('r-aff').value.trim();
-      dbUpsert('morning_ritual',['user_id','date'],{date:today(),gratitude:ritualData.gratitude,good_day:ritualData.good_day,affirmation:ritualData.affirmation});
-      morning={...ritualData,date:today()};
+      const morningRow={id:uid+'_'+today(),user_id:uid,date:today(),gratitude:ritualData.gratitude,good_day:ritualData.good_day,affirmation:ritualData.affirmation};
+      sb.from('morning_ritual').upsert(morningRow,{onConflict:'id'}).then(({error})=>{
+        if(error)console.warn('morning_ritual upsert error:',error);
+        else console.log('saved to: morning_ritual',morningRow);
+      });
+      morning={...morningRow};
       closeM('m-ritual');toast('Утренний ритуал завершён ✨');
       renderMood();renderTasks();updateFab();
     }
@@ -411,8 +424,12 @@ function eveningNext(){
     else {
       const evs=dynVals('ev-events');if(evs.length<3){toast('Запиши минимум 3 события');return}
       eveningData.beautiful_events=evs;
-      dbUpsert('evening_ritual',['user_id','date'],{date:today(),good_for_others:eveningData.good_for_others,improve_tomorrow:eveningData.improve_tomorrow,beautiful_events:eveningData.beautiful_events});
-      evening={...eveningData,date:today()};
+      const eveningRow={id:uid+'_'+today(),user_id:uid,date:today(),good_for_others:eveningData.good_for_others,improve_tomorrow:eveningData.improve_tomorrow,beautiful_events:eveningData.beautiful_events};
+      sb.from('evening_ritual').upsert(eveningRow,{onConflict:'id'}).then(({error})=>{
+        if(error)console.warn('evening_ritual upsert error:',error);
+        else console.log('saved to: evening_ritual',eveningRow);
+      });
+      evening={...eveningRow};
       calCache={};
       closeM('m-evening');toast('Хорошего вечера! 🌙');renderMood();
     }
@@ -660,7 +677,7 @@ async function bgSync(){
 // ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
-function init(){
+async function init(){
   const loading=document.getElementById('loading');
   try{
     console.log('Telegram WebApp:', window.Telegram?.WebApp)
@@ -677,9 +694,18 @@ function init(){
     }
     console.log('uid:',uid)
 
-    loadTasks();loadMorning();loadNotes();
+    // Загружаем данные из всех 6 таблиц из Supabase до первого рендера
+    const[t,m,n,e,wr,mr]=await Promise.all([
+      dbFetch('daily_tasks',   {date:today()}),
+      dbFetch('morning_ritual',{date:today()}),
+      dbFetch('mood_notes',    {date:today()}),
+      dbFetch('evening_ritual',{date:today()}),
+      dbFetch('weekly_review', {week_start:weekStart()}),
+      dbFetch('monthly_review',{month:monthStr()}),
+    ]);
+    tasks=t; morning=m[0]||null; notes=n; evening=e[0]||null;
+    console.log('loaded from Supabase — tasks:',tasks.length,'morning:',!!morning,'notes:',notes.length,'evening:',!!evening,'weekly:',wr.length,'monthly:',mr.length)
 
-    console.log('hiding loader');
     loading.style.display='none';
     document.getElementById('app').style.display='block';
     renderTasks();renderMood();updateFab();
@@ -688,8 +714,6 @@ function init(){
     if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
     checkWeekly();
     checkMonthly();
-
-    bgSync();
   }catch(e){
     console.error('init error:',e);
     loading.style.display='none';
