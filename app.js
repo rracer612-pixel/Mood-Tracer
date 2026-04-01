@@ -10,6 +10,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     detectSessionInUrl: false
   }
 })
+console.log('Supabase client:', sb)
 // ═══════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════
