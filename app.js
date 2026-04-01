@@ -159,7 +159,7 @@ function dbUpsert(table,matchKeys,row){
   const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
   const rows=lsGet(k)||[];
   const i=rows.findIndex(r=>matchKeys.every(mk=>r[mk]===full[mk]));
-  const entry={...(i>=0?rows[i]:{}), ...full, id:i>=0?rows[i].id:Date.now(), created_at:i>=0?rows[i].created_at:new Date().toISOString()};
+  const entry={...(i>=0?rows[i]:{}), ...full, id:i>=0?rows[i].id:Date.now(), created_at:i>=0?rows[i].created_at:Date.now()};
   if(i>=0)rows[i]=entry;else rows.push(entry);
   lsSet(k,rows);
   sb.from(table).upsert(entry,{onConflict:matchKeys.join(',')}).then(({error})=>{if(error)console.warn('dbUpsert error:',error)});
