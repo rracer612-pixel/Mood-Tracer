@@ -675,6 +675,9 @@ async function bgSync(){
 function init(){
   const loading=document.getElementById('loading');
   try{
+    console.log('Telegram WebApp:', window.Telegram?.WebApp)
+    console.log('initDataUnsafe:', window.Telegram?.WebApp?.initDataUnsafe)
+    console.log('user:', window.Telegram?.WebApp?.initDataUnsafe?.user)
     const tg=window.Telegram?.WebApp;
     if(tg){tg.ready();tg.expand();uid=tg.initDataUnsafe?.user?.id?.toString()||'local'}
 
