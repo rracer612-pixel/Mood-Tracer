@@ -1,6 +1,15 @@
 // ═══════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════
+const SUPABASE_URL = 'https://qcktplxyybfwllzsipqs.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFja3RwbHh5eWJmd2xsenNpcHFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NzcwMzAsImV4cCI6MjA5MDQ1MzAzMH0.oI8Ska0clh4J2PuBMIpdftNwShf2jkyDfbOck0YPk_k'
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
+})
 // ═══════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════
@@ -78,6 +87,31 @@ function tableKey(table,filters){
 }
 function tablePrefix(table){return TABLE_PREFIX[table]||table+'_'}
 
+// Строит запрос к Supabase с нужными фильтрами
+function sbQuery(table,filters){
+  let q=sb.from(table).select('*').eq('user_id',uid);
+  if(filters.date)q=q.eq('date',filters.date);
+  if(filters.week_start)q=q.eq('week_start',filters.week_start);
+  if(filters.month)q=q.eq('month',filters.month);
+  return q;
+}
+
+// Сохраняет строки из Supabase в localStorage по нужным ключам
+function sbMergeToLS(table,filters,rows){
+  const k=tableKey(table,filters);
+  if(k){lsSet(k,rows);return}
+  const byKey={};
+  rows.forEach(r=>{
+    const f=r.date?{date:r.date}:r.week_start?{week_start:r.week_start}:r.month?{month:r.month}:null;
+    if(!f)return;
+    const k2=tableKey(table,f);if(!k2)return;
+    if(!byKey[k2])byKey[k2]=[];
+    byKey[k2].push(r);
+  });
+  Object.entries(byKey).forEach(([k2,v])=>lsSet(k2,v));
+}
+
+// Sync-чтение из localStorage (кэш, мгновенно)
 function dbGet(table,filters={}){
   const k=tableKey(table,filters);
   if(k)return lsGet(k)||[];
@@ -85,20 +119,41 @@ function dbGet(table,filters={}){
   for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key.startsWith(prefix)){const rows=lsGet(key)||[];all.push(...(Array.isArray(rows)?rows:[rows]))}}
   return Object.keys(filters).length?all.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)):all;
 }
+
+// Async-чтение из Supabase → обновляет localStorage → возвращает свежие данные
+async function dbFetch(table,filters={}){
+  try{
+    const{data,error}=await sbQuery(table,filters);
+    if(error)throw error;
+    const rows=data||[];
+    sbMergeToLS(table,filters,rows);
+    return rows;
+  }catch(e){
+    console.warn('dbFetch error:',e);
+    return dbGet(table,filters);
+  }
+}
+
 function dbInsert(table,row){
   const full={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:new Date().toISOString()};
   const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
   const rows=lsGet(k)||[];rows.push(full);lsSet(k,rows);
+  sb.from(table).insert(full).then(({error})=>{if(error)console.warn('dbInsert error:',error)});
   return full;
 }
+
 function dbUpdate(table,id,patch){
   const prefix=tablePrefix(table);
-  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const idx=rows.findIndex(r=>r.id==id);if(idx>=0){rows[idx]={...rows[idx],...patch};lsSet(k,rows);return}}}
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const idx=rows.findIndex(r=>r.id==id);if(idx>=0){rows[idx]={...rows[idx],...patch};lsSet(k,rows);break}}}
+  sb.from(table).update(patch).eq('id',id).then(({error})=>{if(error)console.warn('dbUpdate error:',error)});
 }
+
 function dbDelete(table,id){
   const prefix=tablePrefix(table);
-  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const f=rows.filter(r=>r.id!=id);if(f.length!==rows.length){lsSet(k,f);return}}}
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix)){const rows=lsGet(k)||[];const f=rows.filter(r=>r.id!=id);if(f.length!==rows.length){lsSet(k,f);break}}}
+  sb.from(table).delete().eq('id',id).then(({error})=>{if(error)console.warn('dbDelete error:',error)});
 }
+
 function dbUpsert(table,matchKeys,row){
   const full={...row,user_id:uid};
   const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
@@ -107,6 +162,7 @@ function dbUpsert(table,matchKeys,row){
   const entry={...(i>=0?rows[i]:{}), ...full, id:i>=0?rows[i].id:Date.now(), created_at:i>=0?rows[i].created_at:new Date().toISOString()};
   if(i>=0)rows[i]=entry;else rows.push(entry);
   lsSet(k,rows);
+  sb.from(table).upsert(entry,{onConflict:matchKeys.join(',')}).then(({error})=>{if(error)console.warn('dbUpsert error:',error)});
 }
 
 // ═══════════════════════════════════════
@@ -406,7 +462,7 @@ async function loadCalendarData(year, month) {
   if(calCache[key])return;
   const prefix=key+'-';
   const[allNotes,allTasks,allMorning,allEvening]=await Promise.all([
-    dbGet('mood_notes',{}),dbGet('daily_tasks',{}),dbGet('morning_ritual',{}),dbGet('evening_ritual',{})
+    dbFetch('mood_notes',{}),dbFetch('daily_tasks',{}),dbFetch('morning_ritual',{}),dbFetch('evening_ritual',{})
   ]);
   const days={};
   const ensure=ds=>{if(!days[ds])days[ds]={notes:[],tasks:[],morning:null,evening:null};return days[ds]};
@@ -568,13 +624,13 @@ async function loadStats(){
   for(let i=6;i>=0;i--){
     const d=new Date(now);d.setDate(d.getDate()-i);
     const ds=d.toISOString().split('T')[0];days.push(ds);
-    const ns=await dbGet('mood_notes',{date:ds});
+    const ns=await dbFetch('mood_notes',{date:ds});
     if(ns.length){const last=ns[ns.length-1];const em=EMOTIONS.find(e=>e.label===last.emotion);moodVals.push(em?em.val:5)}else moodVals.push(null);
-    const ts=await dbGet('daily_tasks',{date:ds});
+    const ts=await dbFetch('daily_tasks',{date:ds});
     if(ts.length)taskPcts.push(Math.round(ts.filter(t=>t.completed).length/ts.length*100));else taskPcts.push(null);
   }
   const labels=days.map(ds=>{const d=new Date(ds+'T00:00:00');return['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][d.getDay()]});
-  const allNotes=(await dbGet('mood_notes',{})).filter(n=>days.includes(n.date));
+  const allNotes=(await dbFetch('mood_notes',{})).filter(n=>days.includes(n.date));
   if(allNotes.length){const cnt={};allNotes.forEach(n=>{cnt[n.emotion]=(cnt[n.emotion]||0)+1});const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];const em=EMOTIONS.find(e=>e.label===top[0]);document.getElementById('stat-emotion').textContent=em?em.emoji:'—'}
   const tValid=taskPcts.filter(v=>v!==null);
   document.getElementById('stat-tasks').textContent=tValid.length?Math.round(tValid.reduce((a,b)=>a+b,0)/tValid.length)+'%':'—';
@@ -597,6 +653,22 @@ function mkChart(canvasId,type,labels,data,label,color,yMin,yMax,tickCb){
 }
 
 // ═══════════════════════════════════════
+//  BACKGROUND SYNC
+// ═══════════════════════════════════════
+async function bgSync(){
+  try{
+    const[t,m,n,e]=await Promise.all([
+      dbFetch('daily_tasks',{date:today()}),
+      dbFetch('morning_ritual',{date:today()}),
+      dbFetch('mood_notes',{date:today()}),
+      dbFetch('evening_ritual',{date:today()}),
+    ]);
+    tasks=t; morning=m[0]||null; notes=n; evening=e[0]||null;
+    renderTasks(); renderMood(); updateFab();
+  }catch(e){ console.warn('bgSync error:',e); }
+}
+
+// ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
 function init(){
@@ -616,6 +688,8 @@ function init(){
     if(!shownToday){lsSet(`mt-shown:${today()}`,1);setTimeout(()=>openM('m-morning-tasks'),700)}
     checkWeekly();
     checkMonthly();
+
+    bgSync();
   }catch(e){
     console.error('init error:',e);
     loading.style.display='none';
