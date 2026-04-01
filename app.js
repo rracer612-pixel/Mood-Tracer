@@ -135,7 +135,7 @@ async function dbFetch(table,filters={}){
 }
 
 function dbInsert(table,row){
-  const full={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:new Date().toISOString()};
+  const full={...row,user_id:uid,id:Date.now()+'-'+Math.random().toString(36).slice(2,7),created_at:Date.now()};
   const k=tableKey(table,{date:row.date,week_start:row.week_start,month:row.month})||tablePrefix(table)+today();
   const rows=lsGet(k)||[];rows.push(full);lsSet(k,rows);
   sb.from(table).insert(full).then(({error})=>{if(error)console.warn('dbInsert error:',error)});
